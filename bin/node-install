@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+
+NODE_INSTALL_VERSION="0.0.1"
+NODE_INSTALL_DIR="$HOME/.nodes"
+
+#
+# Prints a log message.
+#
+function log()
+{
+  if [[ -t 1 ]]; then
+    echo -e "\x1b[1m\x1b[32m>>>\x1b[0m \x1b[1m$1\x1b[0m"
+  else
+    echo ">>> $1"
+  fi
+}
+
+#
+# Prints a warn message.
+#
+function warn()
+{
+  if [[ -t 1 ]]; then
+    echo -e "\x1b[1m\x1b[33m***\x1b[0m \x1b[1m$1\x1b[0m" >&2
+  else
+    echo "*** $1" >&2
+  fi
+}
+
+#
+# Prints an error message.
+#
+function error()
+{
+  if [[ -t 1 ]]; then
+    echo -e "\x1b[1m\x1b[31m!!!\x1b[0m \x1b[1m$1\x1b[0m" >&2
+  else
+    echo "!!! $1" >&2
+  fi
+}
+
+#
+# Prints an error message and exists with -1.
+#
+function fail()
+{
+  error "$*"
+  exit -1
+}
+
+function usage()
+{
+  cat <<USAGE
+
+  usage: node-install [OPTIONS] [VERSION]
+
+  options:
+
+    -s, --from-source    Installs specified Node version from source
+    -U, --uninstall      Uninstalls specified Node version
+    -V, --version        Prints the version
+    -h, --help           Prints this message
+
+  examples:
+
+    $ node-install 0.10.24
+    $ node-install -U 0.8.17
+    $ node-install --from-source 0.11.4
+
+USAGE
+
+  exit 0
+}
+
+function version()
+{
+  log "version: $NODE_INSTALL_VERSION"
+  exit 0
+}
+
+function get_os() {
+  case "$(uname -a)" in
+    Linux\ *)   echo "linux"   ;;
+    Darwin\ *)  echo "darwin"  ;;
+    SunOS\ *)   echo "sunos"   ;;
+    FreeBSD\ *) echo "freebsd" ;;
+  esac
+}
+
+function get_arch() {
+  case "$(uname -a)" in
+    *x86_64*) echo "x64"         ;;
+    *i*86*)   echo "x86"         ;;
+    *armv6l*) echo "arm-pi"      ;;
+    *)        echo "$(uname -m)" ;;
+  esac
+}
+
+function install_from_binary() {
+  local root="$NODE_INSTALL_DIR/$1"
+  local temp="$NODE_INSTALL_DIR/tmp"
+
+  local dir="node-$1-$(get_os)-$(get_arch)"
+  local tar="$dir.tar.gz"
+
+  local sum_url="http://nodejs.org/dist/$1/SHASUMS.txt"
+  local tar_url="http://nodejs.org/dist/$1/$tar"
+
+  local sum=`curl -s $sum_url | \grep $tar | awk  '{print $1}'`
+
+  if (
+    mkdir -p "$temp/$dir" && \
+    curl -L -C - --progress-bar "$tar_url" -o "$temp/$tar" && \
+    [ `shasum "$temp/$tar" | awk '{print $1}'` = $sum ] && \
+    tar -xzf "$temp/$tar" -C "$temp/$dir" --strip-components 1 && \
+    rm -f "$temp/$tar" && \
+    mv "$temp/$dir" "$root"
+    )
+  then
+    log "success!"
+    return;
+  else
+    fail "failure!"
+  fi
+  return
+}
+
+function install_from_source() {
+  return
+}
+
+function install() {
+  log "installing node $1"
+
+  if [ -z $2 ]; then
+    install_from_binary $1
+  else
+    install_from_source $1
+  fi
+  return
+}
+
+function uninstall() {
+  log "uninstall"
+  return
+}
+
+function node_install()
+{
+
+  local version
+  local uninstall
+  local from_source
+
+  if [ $# -lt 1 ]; then
+    usage
+  fi
+
+  while [ $# -ne 0 ]
+  do
+    case $1 in
+      "-s"|"--from-source" ) from_source=1 ;;
+      "-U"|"--uninstall" )   uninstall=1   ;;
+      "-V"|"--version" )     version       ;;
+      "-h"|"--help" )        usage         ;;
+      * )
+        if [ $# -eq 1 ]; then
+          version="v$1"
+        else
+          fail "unknown param: $1"
+        fi
+      ;;
+    esac
+
+    shift
+  done
+
+  if [ -z $version ]; then
+    fail "no version provided"
+  fi
+
+  if [ -z $uninstall ]; then
+    install $version $from_source
+  else
+    uninstall $version
+  fi
+}
+
+node_install $*
